@@ -23,5 +23,6 @@ def total():
         return render_template("number.html")
 # Add a statement to run the Flask application which can be debugged.
 if __name__=="__main__":
-    app.run(debug="True",port=2000)
+    # app.run(debug="True",port=2000)
+    app.run(host='0.0.0.0', port=80)
 

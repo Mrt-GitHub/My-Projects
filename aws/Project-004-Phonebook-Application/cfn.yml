@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: |
+  CloudFormation Template for Phonebook Application.  
+
+Parameters:
+  myKP:
+    Description: Select your KP
+    Type: AWS::EC2::KeyPair::KeyName
+
+  mySubnets:
+    Description: Please select at least 2 subnets. 
+    Type: List<AWS::EC2::Subnet::Id>
+
+  myVPC:
+    Description: Please select VPC 
+    Type: AWS::EC2::VPC::Id
+
+Resources:
+  MyDB:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBName: phonebook
+      DBInstanceIdentifier: phonebook-db
+      AllocatedStorage: '20'
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      BackupRetentionPeriod: 0
+      DBSecurityGroups:
+        - !Ref myDBsg
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      EngineVersion: 8.0.19
+      MasterUsername: 'admin'
+      MasterUserPassword: 'murat123'
+      MultiAZ: false
+      Port: 3306
+      DeleteAutomatedBackups: true
+      PubliclyAccessible: true
+
+  myListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions: # Required
+        - Type: forward
+          TargetGroupArn: !Ref myTG 
+      LoadBalancerArn: !Ref myALB # Required
+      Port: 80
+      Protocol: HTTP
+
+  myALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      SecurityGroups:
+        - !GetAtt myALBSG.GroupId 
+      Subnets: !Ref mySubnets
+      Type: application
+
+  myASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AvailabilityZones: !GetAZs 
+      DesiredCapacity: "2"
+      HealthCheckGracePeriod: 90
+      HealthCheckType: ELB
+      LaunchTemplate:
+        LaunchTemplateId: !Ref myLT
+        Version: !GetAtt myLT.LatestVersionNumber
+      MaxSize: "3" # Required
+      MinSize: "1" # Required
+      TargetGroupARNs:
+        - !Ref myTG
+
+  myCPUPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref myASG  # Required
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 60.0
+
+  myLT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: ami-04ad2567c9e3d7893
+        InstanceType: t2.micro
+        KeyName: !Ref myKP
+        SecurityGroupIds:
+          - !GetAtt myWebServerSG.GroupId
+        TagSpecifications:
+          - ResourceType: instance
+            Tag:
+              - Key: Name
+                Value: !Sub Web Server of ${AWS::StackName} Stack
+        UserData:
+          Fn::Base64:
+            Fn::Sub:
+              - |
+                #!/bin/bash
+                yum update -y
+                yum install python3 -y
+                pip3 install flask
+                pip3 install flask-mysql
+                cd /home/ec2-user
+                echo "${RDSend}" > dbserver.endpoint
+                chmod 777 dbserver.endpoint
+                wget xxxxxxxxx
+                mkdir templates
+                cd templates
+                wget xxxxxxxxxxx
+                wget xxxxxxxxxxxxxxx 
+                wget xxxxxxxxxxxxxxx
+                cd ..
+                python3 phonebook-app.py
+              - RDSend: !GetAtt MyDB.Endpoint.Address
+
+  myTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 5
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      UnhealthyThresholdCount: 3
+      VpcId: !Ref myVPC
+  
+  
+
+  myDBsg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow connections only from Webserver
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !GetAtt myWebServerSG.GroupId
+
+  myALBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Enables HTTP for ALB" # Required
+      SecurityGroupIngress:
+        -   CidrIp: 0.0.0.0/0
+            FromPort: 80
+            ToPort: 80
+            IpProtocol: tcp
+      VpcId: !Ref myVPC      
+
+  myWebServerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Enables SSH for entering to EC2 and HTTP to ALB" # Required
+      SecurityGroupIngress:
+        -   CidrIp: 0.0.0.0/0
+            FromPort: 22
+            ToPort: 22
+            IpProtocol: tcp
+
+        -   SourceSecurityGroupId: !GetAtt myALBSG.GroupId
+            FromPort: 80
+            ToPort: 80
+            IpProtocol: tcp
+      VpcId: !Ref myVPC
+
+
+
+Outputs:
+
+  AppUrl:
+    Description: Url of the ALB
+    Value: !Join
+      - ""
+      - - "http://"
+        - !GetAtt myALB.DNSName 
+
+  RDSEndPoint:
+    Description: 'The RDS Endpoint of MySQL DB'
+    Value: !GetAtt MyDB.Endpoint.Address
+

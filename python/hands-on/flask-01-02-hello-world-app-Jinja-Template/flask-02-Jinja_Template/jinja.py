@@ -6,6 +6,8 @@ app = Flask(__name__)
 def head():
     return render_template("index.html", number1=34, number2=15)
 
+sdad
+fsdfdsfds
 @app.route("/karil")
 def number():
     num1 , num2 = 23, 45
